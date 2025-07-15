@@ -2,6 +2,7 @@ import { defineConfig } from 'vite'
 import path from 'node:path'
 import electron from 'vite-plugin-electron/simple'
 import vue from '@vitejs/plugin-vue'
+import renderer from 'vite-plugin-electron-renderer'
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -11,6 +12,15 @@ export default defineConfig({
       main: {
         // Shortcut of `build.lib.entry`.
         entry: 'electron/main.ts',
+        vite: {
+          build: {
+            rollupOptions: {
+              external: [
+                'serialport', // Ensure serialport is treated as an external dependency
+              ]
+            }
+          }
+        }
       },
       preload: {
         // Shortcut of `build.rollupOptions.input`.
@@ -25,5 +35,10 @@ export default defineConfig({
         ? undefined
         : {},
     }),
+    renderer({
+      resolve: {
+        serialport: { type: 'cjs' }, // Use CommonJS for serialport
+      }
+    })
   ],
 })

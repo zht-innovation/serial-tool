@@ -1,10 +1,17 @@
-import { app, BrowserWindow } from 'electron'
-import { createRequire } from 'node:module'
+import { app, BrowserWindow, ipcMain } from 'electron'
+import { SerialPort } from 'serialport';
 import { fileURLToPath } from 'node:url'
-import path from 'node:path'
+import path, { dirname } from 'node:path'
 
-const require = createRequire(import.meta.url)
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
+// const require = createRequire(import.meta.url)
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+import { SBUSParser } from './sbus'
+import { DeviceManager } from './device';
+
+const deviceManager = new DeviceManager();
+const sbusParser = new SBUSParser();
 
 // The built directory structure
 //
@@ -25,11 +32,15 @@ export const RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist')
 process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 'public') : RENDERER_DIST
 
 let win: BrowserWindow | null
+let curPort: SerialPort | null
+let isReading = false;
 
 function createWindow() {
     win = new BrowserWindow({
         icon: path.join(process.env.VITE_PUBLIC, 'favicon.ico'),
         webPreferences: {
+            nodeIntegration: true,
+            nodeIntegrationInWorker: true,
             preload: path.join(__dirname, 'preload.mjs'),
         },
     })
@@ -45,6 +56,77 @@ function createWindow() {
         // win.loadFile('dist/index.html')
         win.loadFile(path.join(RENDERER_DIST, 'index.html'))
     }
+}
+
+function setupSerialPortIPC() {
+    ipcMain.handle('scan-devices', async () => {
+        try {
+            const devices = await deviceManager.scanSerialPorts();
+            return { success: true, devices };
+        } catch (error) {
+            return { success: false, error: (error as Error).message };
+        }
+    })
+
+    ipcMain.handle('connect-device', async (_, portPath: string) => {
+        try {
+            if (curPort) {
+                curPort.close();
+            }
+
+            curPort = new SerialPort({
+                path: portPath,
+                baudRate: 100000,
+                dataBits: 8,
+                parity: 'even',
+                stopBits: 2
+            })
+
+            return new Promise((resolve) => {
+                curPort!.on('open', () => {
+                    console.log(`已连接到 ${portPath}`);
+                    resolve({ success: true });
+                });
+
+                curPort!.on('error', (error) => {
+                    resolve({ success: false, error: error.message });
+                })
+            })
+        } catch (error) {
+            return { success: false, error: (error as Error).message };
+        }
+    })
+
+    ipcMain.handle('start-reading', async () => {
+        if (!curPort) {
+            return { success: false, error: '未连接设备' };
+        }
+
+        isReading = true;
+        curPort.on('data', (data: Buffer) => {
+            const packets = sbusParser.addData(data);
+            for (const channels of packets) {
+                const microseconds = sbusParser.channelsToMicroseconds(channels);
+                win?.webContents.send('sbus-data', {
+                    channels,
+                    microseconds,
+                    timestamp: new Date().toLocaleTimeString() 
+                })
+            }
+        })
+
+        return { success: true };
+    })
+
+    ipcMain.handle('stop-reading', async () => {
+        isReading = false;
+        if (curPort) {
+            curPort.removeAllListeners('data');
+            curPort.close();
+            curPort = null;
+        }
+        return { success: true };
+    })
 }
 
 // Quit when all windows are closed, except on macOS. There, it's common
@@ -65,4 +147,5 @@ app.on('activate', () => {
     }
 })
 
+setupSerialPortIPC();
 app.whenReady().then(createWindow)

@@ -1,5 +1,11 @@
 import { ipcRenderer, contextBridge } from 'electron'
 
+export interface SBUSData {
+	channels: number[];
+	microseconds: number[];
+	timestamp: string;
+}
+
 // --------- Expose some API to the Renderer process ---------
 contextBridge.exposeInMainWorld('ipcRenderer', {
 	on(...args: Parameters<typeof ipcRenderer.on>) {
@@ -20,5 +26,15 @@ contextBridge.exposeInMainWorld('ipcRenderer', {
 	},
 
 	// You can expose other APTs you need here.
-	// ...
+	// devices management
+	scanDevices: () => ipcRenderer.invoke('scan-devices'),
+	connectDevice: (portPath: string) => ipcRenderer.invoke('connect-device', portPath),
+	startReading: () => ipcRenderer.invoke('start-reading'),
+	stopReading: () => ipcRenderer.invoke('stop-reading'),
+	onSBUSData: (callback: (data: SBUSData) => void) => {
+		ipcRenderer.on('sbus-data', (_, data) => callback(data as SBUSData))
+	},
+	removeSBUSDataListener: () => {
+		ipcRenderer.removeAllListeners('sbus-data')
+	}
 })
