@@ -26,7 +26,11 @@ electron.contextBridge.exposeInMainWorld("ipcRenderer", {
   onSBUSData: (callback) => {
     electron.ipcRenderer.on("sbus-data", (_, data) => callback(data));
   },
-  removeSBUSDataListener: () => {
+  onRawData: (callback) => {
+    electron.ipcRenderer.on("raw-data", (_, data) => callback(Buffer.from(data)));
+  },
+  removeDataListener: () => {
     electron.ipcRenderer.removeAllListeners("sbus-data");
+    electron.ipcRenderer.removeAllListeners("raw-data");
   }
 });

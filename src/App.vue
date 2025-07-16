@@ -9,6 +9,8 @@
 		<StatusBar :status="status" :is-connected="isConnected" :last-update="lastUpdate" />
 
 		<DataDisplay v-if="isReading" :channels="channels" />
+
+		<RawDataWindow v-if="!isReading" ref="rawDataWindow" />
 	</div>
 </template>
 
@@ -18,6 +20,7 @@ import AppHeader from './components/AppHeader.vue'
 import ControlPanel from './components/ControlPanel.vue'
 import StatusBar from './components/StatusBar.vue'
 import DataDisplay from './components/DataDisplay.vue'
+import RawDataWindow from './components/RawDataWindow.vue'
 
 interface DeviceInfo {
 	path: string
@@ -44,6 +47,7 @@ const status = ref('未连接')
 const lastUpdate = ref('')
 const channels = ref<number[]>(Array(16).fill(0))
 const microseconds = ref<number[]>(Array(16).fill(1500))
+const rawDataWindow = ref()
 
 // 设备管理方法
 const handleScanDevices = async () => {
@@ -111,14 +115,21 @@ const handleSBUSData = (data: SBUSData) => {
 	lastUpdate.value = data.timestamp
 }
 
+const handleRawData = (data: Buffer) => {
+	if (rawDataWindow.value) {
+		rawDataWindow.value.addData(data)
+	}
+}
+
 // 生命周期
 onMounted(() => {
 	window.ipcRenderer.onSBUSData(handleSBUSData)
+	window.ipcRenderer.onRawData(handleRawData)
 	handleScanDevices()
 })
 
 onUnmounted(() => {
-	window.ipcRenderer.removeSBUSDataListener()
+	window.ipcRenderer.removeDataListener()
 })
 </script>
 

@@ -178,6 +178,7 @@ function setupSerialPortIPC() {
       return { success: false, error: "未连接设备" };
     }
     curPort.on("data", (data) => {
+      win == null ? void 0 : win.webContents.send("raw-data", Array.from(data));
       const packets = sbusParser.addData(data);
       for (const channels of packets) {
         const microseconds = sbusParser.channelsToMicroseconds(channels);

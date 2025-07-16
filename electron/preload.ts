@@ -34,7 +34,11 @@ contextBridge.exposeInMainWorld('ipcRenderer', {
 	onSBUSData: (callback: (data: SBUSData) => void) => {
 		ipcRenderer.on('sbus-data', (_, data) => callback(data as SBUSData))
 	},
-	removeSBUSDataListener: () => {
+	onRawData: (callback: (data: Buffer) => void) => {
+		ipcRenderer.on('raw-data', (_, data) => callback(Buffer.from(data)))
+	},
+	removeDataListener: () => {
 		ipcRenderer.removeAllListeners('sbus-data')
+		ipcRenderer.removeAllListeners('raw-data')
 	}
 })

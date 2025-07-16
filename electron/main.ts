@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain } from 'electron'
 import { SerialPort } from 'serialport';
+// import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import path, { dirname } from 'node:path'
 
@@ -104,6 +105,10 @@ function setupSerialPortIPC() {
 
         isReading = true;
         curPort.on('data', (data: Buffer) => {
+            // 发送原始数据
+            win?.webContents.send('raw-data', Array.from(data))
+            
+            // 解析SBUS数据
             const packets = sbusParser.addData(data);
             for (const channels of packets) {
                 const microseconds = sbusParser.channelsToMicroseconds(channels);
