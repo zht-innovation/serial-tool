@@ -6,7 +6,7 @@
 				通道值
 			</h3>
 			<div class="channels-grid">
-				<ChannelCard v-for="(value, index) in channels" :key="`raw-${index}`" :channel-number="index + 1"
+				<ChannelCard v-for="(value, index) in displayChannels" :key="`raw-${index}`" :channel-number="index + 1"
 					:value="value" :max-value="2047" type="raw" />
 			</div>
 		</div>
@@ -14,14 +14,36 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue';
+import { onMounted, computed, watch, ref } from 'vue';
 import ChannelCard from './ChannelCard.vue';
 
 const props = defineProps(['channels'])
 
+// 使用本地ref来控制更新频率
+const localChannels = ref<number[]>(Array(16).fill(0))
+
+const displayChannels = computed(() => {
+	return localChannels.value
+})
+
+// 使用watch来控制更新频率
+let updatePending = false
+watch(() => props.channels, (newChannels) => {
+    if (!newChannels || updatePending) return
+    
+    updatePending = true
+    requestAnimationFrame(() => {
+        localChannels.value = [...newChannels]
+        updatePending = false
+    })
+}, { deep: true })
+
 onMounted(() => {
 	// 这里可以添加一些初始化逻辑
-	console.log('DataDisplay组件已挂载，当前通道值:', props.channels);
+	// console.log('DataDisplay组件已挂载，当前通道值:', props.channels);
+    if (props.channels) {
+        localChannels.value = [...props.channels]
+    }
 });
 </script>
 

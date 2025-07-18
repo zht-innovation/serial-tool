@@ -36,6 +36,33 @@ let win: BrowserWindow | null
 let curPort: SerialPort | null
 let isReading = false;
 
+let dataBuffer: number[] = []
+let bufferTimer: NodeJS.Timeout | null = null
+const BUFFER_FLUSH_INTERVAL = 25 // 50ms批量发送一次
+
+// 添加SBUS数据节流
+let lastSBUSData: number[] | null = null
+let sbusUpdateTimer: NodeJS.Timeout | null = null
+const SBUS_UPDATE_INTERVAL = 50 // 50ms更新一次SBUS数据
+
+function flushDataBuffer() {
+    if (dataBuffer.length > 0 && win) {
+        win.webContents.send('raw-data', [...dataBuffer])
+        dataBuffer = []
+    }
+    bufferTimer = null
+}
+
+function flushSBUSData() {
+    if (lastSBUSData && win) {
+        win.webContents.send('sbus-data', {
+            channels: lastSBUSData,
+            timestamp: new Date().toLocaleTimeString()
+        })
+        lastSBUSData = null
+    }
+}
+
 function createWindow() {
     win = new BrowserWindow({
         icon: path.join(process.env.VITE_PUBLIC, 'favicon.ico'),
@@ -104,19 +131,25 @@ function setupSerialPortIPC() {
         }
 
         isReading = true;
+        
+        // 启动SBUS数据定时发送
+        if (!sbusUpdateTimer) {
+            sbusUpdateTimer = setInterval(flushSBUSData, SBUS_UPDATE_INTERVAL)
+        }
+        
         curPort.on('data', (data: Buffer) => {
-            // 发送原始数据
-            win?.webContents.send('raw-data', Array.from(data))
+            // 批量缓冲原始数据
+            dataBuffer.push(...Array.from(data))
             
-            // 解析SBUS数据
+            // 如果没有定时器，启动批量发送
+            if (!bufferTimer) {
+                bufferTimer = setInterval(flushDataBuffer, BUFFER_FLUSH_INTERVAL)
+            }
+            
+            // 解析SBUS数据但不立即发送，而是缓存最新的
             const packets = sbusParser.addData(data);
-            for (const channels of packets) {
-                const microseconds = sbusParser.channelsToMicroseconds(channels);
-                win?.webContents.send('sbus-data', {
-                    channels,
-                    microseconds,
-                    timestamp: new Date().toLocaleTimeString() 
-                })
+            if (packets.length > 0) {
+                lastSBUSData = packets[packets.length - 1] // 只保留最新的数据包
             }
         })
 
@@ -130,6 +163,19 @@ function setupSerialPortIPC() {
             curPort.close();
             curPort = null;
         }
+        
+        // 清理缓冲区
+        if (bufferTimer) {
+            clearInterval(bufferTimer)
+            bufferTimer = null
+        }
+        if (sbusUpdateTimer) {
+            clearInterval(sbusUpdateTimer)
+            sbusUpdateTimer = null
+        }
+        dataBuffer = []
+        lastSBUSData = null
+        
         return { success: true };
     })
 }

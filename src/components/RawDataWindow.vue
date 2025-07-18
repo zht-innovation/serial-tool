@@ -81,22 +81,37 @@ const dataLines = computed(() => {
 })
 
 // 方法
+let pendingData: number[] = []
+let addDataPending = false
+
 const addData = (data: Buffer) => {
     const newBytes = Array.from(data)
-    rawData.value.push(...newBytes)
-    dataCount.value += newBytes.length
-    packetCount.value++
-    lastUpdate.value = new Date().toLocaleTimeString()
+    pendingData.push(...newBytes)
     
-    // 限制缓冲区大小（保留最近的10KB数据）
-    if (rawData.value.length > 10240) {
-        rawData.value = rawData.value.slice(-8192)
-    }
-    
-    // 自动滚动到底部
-    if (autoScroll.value) {
-        nextTick(() => {
-            scrollToBottom()
+    if (!addDataPending) {
+        addDataPending = true
+        requestAnimationFrame(() => {
+            if (pendingData.length > 0) {
+                rawData.value.push(...pendingData)
+                dataCount.value += pendingData.length
+                packetCount.value++
+                lastUpdate.value = new Date().toLocaleTimeString()
+                
+                // 限制缓冲区大小（保留最近的10KB数据）
+                if (rawData.value.length > 10240) {
+                    rawData.value = rawData.value.slice(-8192)
+                }
+                
+                pendingData = []
+                addDataPending = false
+                
+                // 自动滚动到底部
+                if (autoScroll.value) {
+                    nextTick(() => {
+                        scrollToBottom()
+                    })
+                }
+            }
         })
     }
 }
@@ -279,6 +294,7 @@ defineExpose({
                     margin-right: 10px;
                     width: 60px;
                     flex-shrink: 0;
+					margin-right: 4px;
                 }
 
                 .hex-data {

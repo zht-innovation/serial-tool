@@ -2,7 +2,6 @@ import { ipcRenderer, contextBridge } from 'electron'
 
 export interface SBUSData {
 	channels: number[];
-	microseconds: number[];
 	timestamp: string;
 }
 

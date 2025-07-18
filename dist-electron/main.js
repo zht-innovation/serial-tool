@@ -121,6 +121,28 @@ const RENDERER_DIST = path.join(process.env.APP_ROOT, "dist");
 process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, "public") : RENDERER_DIST;
 let win;
 let curPort;
+let dataBuffer = [];
+let bufferTimer = null;
+const BUFFER_FLUSH_INTERVAL = 25;
+let lastSBUSData = null;
+let sbusUpdateTimer = null;
+const SBUS_UPDATE_INTERVAL = 50;
+function flushDataBuffer() {
+  if (dataBuffer.length > 0 && win) {
+    win.webContents.send("raw-data", [...dataBuffer]);
+    dataBuffer = [];
+  }
+  bufferTimer = null;
+}
+function flushSBUSData() {
+  if (lastSBUSData && win) {
+    win.webContents.send("sbus-data", {
+      channels: lastSBUSData,
+      timestamp: (/* @__PURE__ */ new Date()).toLocaleTimeString()
+    });
+    lastSBUSData = null;
+  }
+}
 function createWindow() {
   win = new BrowserWindow({
     icon: path.join(process.env.VITE_PUBLIC, "favicon.ico"),
@@ -177,16 +199,17 @@ function setupSerialPortIPC() {
     if (!curPort) {
       return { success: false, error: "未连接设备" };
     }
+    if (!sbusUpdateTimer) {
+      sbusUpdateTimer = setInterval(flushSBUSData, SBUS_UPDATE_INTERVAL);
+    }
     curPort.on("data", (data) => {
-      win == null ? void 0 : win.webContents.send("raw-data", Array.from(data));
+      dataBuffer.push(...Array.from(data));
+      if (!bufferTimer) {
+        bufferTimer = setInterval(flushDataBuffer, BUFFER_FLUSH_INTERVAL);
+      }
       const packets = sbusParser.addData(data);
-      for (const channels of packets) {
-        const microseconds = sbusParser.channelsToMicroseconds(channels);
-        win == null ? void 0 : win.webContents.send("sbus-data", {
-          channels,
-          microseconds,
-          timestamp: (/* @__PURE__ */ new Date()).toLocaleTimeString()
-        });
+      if (packets.length > 0) {
+        lastSBUSData = packets[packets.length - 1];
       }
     });
     return { success: true };
@@ -197,6 +220,16 @@ function setupSerialPortIPC() {
       curPort.close();
       curPort = null;
     }
+    if (bufferTimer) {
+      clearInterval(bufferTimer);
+      bufferTimer = null;
+    }
+    if (sbusUpdateTimer) {
+      clearInterval(sbusUpdateTimer);
+      sbusUpdateTimer = null;
+    }
+    dataBuffer = [];
+    lastSBUSData = null;
     return { success: true };
   });
 }

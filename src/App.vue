@@ -10,7 +10,7 @@
 
 		<DataDisplay v-if="isReading" :channels="channels" />
 
-		<RawDataWindow v-if="!isReading" ref="rawDataWindow" />
+		<RawDataWindow v-if="isReading" ref="rawDataWindow" />
 	</div>
 </template>
 
@@ -35,7 +35,6 @@ interface DeviceInfo {
 
 interface SBUSData {
 	channels: number[]
-	microseconds: number[]
 	timestamp: string
 }
 
@@ -46,8 +45,11 @@ const isReading = ref(false)
 const status = ref('未连接')
 const lastUpdate = ref('')
 const channels = ref<number[]>(Array(16).fill(0))
-const microseconds = ref<number[]>(Array(16).fill(1500))
 const rawDataWindow = ref()
+
+// 添加数据缓冲和渲染优化
+let pendingChannelsUpdate: number[] | null = null
+let updateScheduled = false
 
 // 设备管理方法
 const handleScanDevices = async () => {
@@ -110,9 +112,20 @@ const handleStopReading = async () => {
 
 // SBUS数据处理
 const handleSBUSData = (data: SBUSData) => {
-	channels.value = data.channels
-	microseconds.value = data.microseconds
-	lastUpdate.value = data.timestamp
+    pendingChannelsUpdate = data.channels
+    lastUpdate.value = data.timestamp
+    
+    // 使用requestAnimationFrame优化渲染
+    if (!updateScheduled) {
+        updateScheduled = true
+        requestAnimationFrame(() => {
+            if (pendingChannelsUpdate) {
+                channels.value = [...pendingChannelsUpdate]
+                pendingChannelsUpdate = null
+            }
+            updateScheduled = false
+        })
+    }
 }
 
 const handleRawData = (data: Buffer) => {
